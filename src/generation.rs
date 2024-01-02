@@ -112,6 +112,6 @@ const COLORS: [bevy::prelude::Color; 6] = [
     Color::ORANGE_RED,
     Color::TURQUOISE,
     Color::DARK_GREEN,
-    Color::BISQUE,
     Color::VIOLET,
+    Color::BISQUE,
 ];
