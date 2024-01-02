@@ -1,6 +1,7 @@
-# Bevy-Tetris
+# Bevy-Mandelbrot
 
-A bevy learing project.
+A bevy learning project.
 
-Tetris game with simple rules (really simple rotations and wall kicks).
-This project is mainly used to learn bevy.
+Generate some mandelbrot with controls. Trying to use async tasks to parallelize the mandelbrot on CPU.
+
+Maybe a GPU version will come later.
