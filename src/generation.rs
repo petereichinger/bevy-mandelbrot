@@ -1,6 +1,11 @@
 use std::thread::current;
 
-use bevy::{math::DVec2, prelude::*, sprite::MaterialMesh2dBundle};
+use bevy::{
+    math::DVec2,
+    prelude::*,
+    sprite::MaterialMesh2dBundle,
+    tasks::{AsyncComputeTaskPool, Task},
+};
 
 pub struct GenerationPlugin;
 
@@ -77,6 +82,11 @@ fn trigger_generate(
     }
 }
 
+struct MandelbrotResult(Vec<Color>);
+
+#[derive(Component)]
+struct MandelbrotTask(Task<MandelbrotResult>);
+
 fn generation(
     mut materials: ResMut<Assets<ColorMaterial>>,
     window: Query<&Window>,
@@ -113,6 +123,9 @@ fn generation(
 
         let mut parent = commands.spawn((ResultContainer, SpatialBundle::default()));
 
+        let thread_pool = AsyncComputeTaskPool::get();
+
+        (0..cells_x).for_each(|x| (0..cells_y).for_each(|y| {}));
         parent.with_children(|cb| {
             (0..cells_x).for_each(|x| {
                 (0..cells_y).for_each(|y| {
@@ -130,12 +143,16 @@ fn generation(
                     let y = (y + 0.5) * CELL_SIZE;
                     let trans = cell_origin + Vec2::new(x, y);
 
-                    cb.spawn(MaterialMesh2dBundle {
-                        mesh: assets.mesh.clone().into(),
-                        material: materials.add(ColorMaterial::from(COLORS[color_index])),
-                        transform: Transform::from_translation(trans.extend(0.0)),
-                        ..default()
-                    });
+                    let task = thread_pool.spawn(async move { MandelbrotResult(vec![]) });
+
+                    cb.spawn(MandelbrotTask(task));
+
+                    // cb.spawn(MaterialMesh2dBundle {
+                    //     mesh: assets.mesh.clone().into(),
+                    //     material: materials.add(ColorMaterial::from(COLORS[color_index])),
+                    //     transform: Transform::from_translation(trans.extend(0.0)),
+                    //     ..default()
+                    // });
                 });
             });
         });
