@@ -1,11 +1,12 @@
-use bevy::{prelude::*, sprite::MaterialMesh2dBundle};
+use std::thread::current;
+
+use bevy::{math::DVec2, prelude::*, sprite::MaterialMesh2dBundle};
 
 pub struct GenerationPlugin;
 
 impl Plugin for GenerationPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, init)
-            .insert_resource(RegenerateTimer(Timer::from_seconds(0.25, TimerMode::Once)))
             .add_systems(Update, trigger_generate)
             .add_systems(Update, generation);
     }
@@ -25,10 +26,36 @@ struct RegenerateTimer(Timer);
 #[derive(Resource)]
 struct GenerateCommand;
 
+#[derive(Debug)]
+struct CurrentZoom {
+    center: DVec2,
+    extent: DVec2,
+}
+
+impl CurrentZoom {
+    fn from_window(window: &Window) -> Self {
+        let window_resolution = &window.resolution;
+
+        let width = window_resolution.width() as f64;
+        let height = window_resolution.height() as f64;
+        let extent = if width > height {
+            DVec2::new(1.5, 1.5 * height / width)
+        } else {
+            DVec2::new(width / height, 1.0)
+        };
+
+        Self {
+            center: DVec2::new(-0.5, 0.0),
+            extent,
+        }
+    }
+}
+
 fn init(mut commands: Commands, mut meshes: ResMut<Assets<Mesh>>) {
     let mesh = meshes.add(shape::Quad::new(CELL_SIZE * Vec2::ONE).into());
 
     commands.insert_resource(GenerateAssets { mesh });
+    commands.insert_resource(RegenerateTimer(Timer::from_seconds(0.25, TimerMode::Once)));
 }
 
 fn trigger_generate(
@@ -67,19 +94,22 @@ fn generation(
             .iter()
             .for_each(|entity| commands.entity(entity).despawn_recursive());
 
-        let width = window.single().resolution.width();
-        let height = window.single().resolution.height();
+        let window = window.single();
+        let window_resolution = &window.resolution;
+        let width = window_resolution.width();
+        let height = window_resolution.height();
 
         let cells_x = (width / CELL_SIZE).ceil() as i32;
         let cells_y = (height / CELL_SIZE).ceil() as i32;
 
-        let x_offset_correction = 0.5; //if cells_x % 2 == 0 { 0.5 } else { 0.0 };
-        let y_offset_correction = 0.5; //if cells_y % 2 == 0 { 0.5 } else { 0.0 };
+        let window_size = 0.5 * Vec2::new(width, height).as_dvec2();
+        let cell_origin = -0.5f32 * Vec2::new(width, height);
 
-        let x_offset = CELL_SIZE * (-0.5 * cells_x as f32 + x_offset_correction);
-        let y_offset = CELL_SIZE * (-0.5 * cells_y as f32 + y_offset_correction);
-
-        info!("generating {}x{}", cells_x, cells_y);
+        let current_zoom = CurrentZoom::from_window(window);
+        info!(
+            "generating {}x{} ({} {} {:?})",
+            cells_x, cells_y, width, height, current_zoom
+        );
 
         let mut parent = commands.spawn((ResultContainer, SpatialBundle::default()));
 
@@ -87,14 +117,23 @@ fn generation(
             (0..cells_x).for_each(|x| {
                 (0..cells_y).for_each(|y| {
                     let color_index = (x + cells_x * y) as usize % COLORS.len();
+                    let x = x as f32;
+                    let y = y as f32;
+                    let min = (cell_origin + CELL_SIZE * Vec2::new(x, y)).as_dvec2();
+                    let max = (cell_origin + CELL_SIZE * Vec2::new(x + 1.0, y + 1.0)).as_dvec2();
+
+                    let min_pos = (min / window_size) * current_zoom.extent + current_zoom.center;
+                    let max_pos = (max / window_size) * current_zoom.extent + current_zoom.center;
+
+                    info!("{} {}", min_pos, max_pos);
+                    let x = (x + 0.5) * CELL_SIZE;
+                    let y = (y + 0.5) * CELL_SIZE;
+                    let trans = cell_origin + Vec2::new(x, y);
+
                     cb.spawn(MaterialMesh2dBundle {
                         mesh: assets.mesh.clone().into(),
                         material: materials.add(ColorMaterial::from(COLORS[color_index])),
-                        transform: Transform::from_translation(Vec3::new(
-                            x_offset + CELL_SIZE * x as f32,
-                            y_offset + CELL_SIZE * y as f32,
-                            0.,
-                        )),
+                        transform: Transform::from_translation(trans.extend(0.0)),
                         ..default()
                     });
                 });
@@ -105,7 +144,7 @@ fn generation(
     }
 }
 
-const CELL_SIZE: f32 = 128.0f32;
+const CELL_SIZE: f32 = 256.0f32;
 
 const COLORS: [bevy::prelude::Color; 6] = [
     Color::ALICE_BLUE,
